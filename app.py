@@ -117,6 +117,7 @@ elif aba == "Área de Dobragem":
                 st.divider()
 
 # 4. FINANCEIRO & RESET
+# 4. FINANCEIRO & RESET
 elif aba == "Financeiro":
     st.header("💰 Fechamento do Final de Semana")
     df_tudo = pd.DataFrame(st.session_state.historico_geral)
@@ -124,35 +125,56 @@ elif aba == "Financeiro":
     if not df_tudo.empty:
         df_dobrado = df_tudo[df_tudo['Dobrador'].notna()]
         
-        st.subheader("🏫 Total Escola (Student/Tandem)")
-        escola = df_dobrado[df_dobrado['Pagador'] == "Escola"]
-        if not escola.empty:
-            st.table(escola.groupby('Dobrador')['Valor'].sum().reset_index())
+        # --- NOVO DASHBOARD DA ESCOLA ---
+        st.subheader("🏫 Resumo Gerencial Escola")
+        escola_dados = df_dobrado[df_dobrado['Pagador'] == "Escola"]
         
+        if not escola_dados.empty:
+            # Cartões de Resumo Operacional
+            qtd_student = len(escola_dados[escola_dados['Equipamento'] == "Student"])
+            qtd_tandem = len(escola_dados[escola_dados['Equipamento'] == "Tandem"])
+            total_escola = escola_dados['Valor'].sum()
+            
+            c1, c2, c3 = st.columns(3)
+            c1.metric("Students Dobrados", f"{qtd_student}")
+            c2.metric("Tandems Dobrados", f"{qtd_tandem}")
+            c3.metric("Total a Pagar (Escola)", f"R$ {total_escola},00")
+            
+            st.write("---")
+            st.write("**Detalhamento de Pagamento por Dobrador:**")
+            # Tabela que mostra Quem recebe, Quantas dobragens fez e o Valor Total
+            resumo_pagamento = escola_dados.groupby('Dobrador').agg(
+                Quantidade=('Valor', 'count'),
+                Total_R$=('Valor', 'sum')
+            ).reset_index()
+            
+            st.table(resumo_pagamento)
+        else:
+            st.info("Nenhuma dobragem de Student ou Tandem registrada ainda.")
+        
+        # --- EXTRATO INDIVIDUAL (IGUAL ANTERIOR) ---
         st.divider()
-        st.subheader("👤 Extrato Individual")
+        st.subheader("👤 Extrato Individual do Dobrador")
         consulta = st.selectbox("Verificar nome:", ["TAMIOZZO", "PORTELLA", "SAUL", "GABRIEL", "VINICIUS"])
         meus_dados = df_dobrado[df_dobrado['Dobrador'] == consulta]
         
         if not meus_dados.empty:
             col_a, col_b = st.columns(2)
-            col_a.metric("Total Acumulado", f"R$ {meus_dados['Valor'].sum()}")
-            col_b.metric("Total Dobragens", len(meus_dados))
-            st.dataframe(meus_dados[["Dia", "Decolagem", "Atleta", "Equipamento", "Valor"]])
+            col_a.metric("Seu Total Geral", f"R$ {meus_dados['Valor'].sum()},00")
+            col_b.metric("Suas Dobragens", len(meus_dados))
+            st.dataframe(meus_dados[["Dia", "Decolagem", "Atleta", "Equipamento", "Valor", "Pagador"]])
             
-        # --- BLOCO DE RESET (NOVO) ---
+        # --- BLOCO DE RESET ---
         st.divider()
         st.subheader("🚨 Área de Risco")
         with st.expander("Limpar todos os dados do Sistema"):
-            st.warning("Isso apagará permanentemente todos os registros de Manifesto e Decolagens do final de semana.")
-            confirmacao = st.text_input("Para resetar, digite 'RESET' no campo abaixo:")
+            st.warning("Isso apagará todos os registros do final de semana.")
+            confirmacao = st.text_input("Para resetar, digite 'RESET':")
             if st.button("CONFIRMAR RESET TOTAL"):
                 if confirmacao == "RESET":
                     st.session_state.historico_geral = []
                     st.session_state.atletas_area = []
-                    st.success("Sistema resetado com sucesso!")
+                    st.success("Sistema resetado!")
                     st.rerun()
-                else:
-                    st.error("Palavra de confirmação incorreta.")
     else:
         st.info("Nenhum dado registrado.")
