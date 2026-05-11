@@ -51,11 +51,9 @@ if aba == "Manifesto":
     st.subheader("Atletas presentes no CGP")
     st.write(", ".join(st.session_state.atletas_area) if st.session_state.atletas_area else "Ninguém registrado.")
 
-# 2. LANÇAR DECOLAGEM (COM VISUALIZAÇÃO DOS REGISTROS)
+# 2. LANÇAR DECOLAGEM
 elif aba == "Lançar Decolagem":
     st.header(f"✈️ Montar Voo - {dia_operacao}")
-    
-    # Formulário de Lançamento
     with st.expander("➕ Lançar Nova Vaga", expanded=True):
         col1, col2, col3 = st.columns(3)
         with col1:
@@ -68,7 +66,6 @@ elif aba == "Lançar Decolagem":
         if st.button("Lançar no Sistema"):
             valor = 30 if equip == "Tandem" else 25
             pagador = "Escola" if equip in ["Student", "Tandem"] else "Particular"
-            
             st.session_state.historico_geral.append({
                 "id": len(st.session_state.historico_geral),
                 "Dia": dia_operacao,
@@ -82,45 +79,27 @@ elif aba == "Lançar Decolagem":
             st.rerun()
 
     st.divider()
-    
-    # --- VISUALIZAÇÃO DAS DECOLAGENS (O QUE VOCÊ PEDIU) ---
     st.subheader(f"📋 Registros de {dia_operacao}")
-    
     df_dia = pd.DataFrame(st.session_state.historico_geral)
     if not df_dia.empty:
         df_dia = df_dia[df_dia['Dia'] == dia_operacao]
-        
-        if df_dia.empty:
-            st.info("Nenhuma decolagem lançada para hoje.")
-        else:
-            # Pegamos os números das decolagens lançadas e ordenamos
+        if not df_dia.empty:
             decolagens_lista = sorted(df_dia['Decolagem'].unique())
-            
             for d in decolagens_lista:
                 st.markdown(f'<div class="decolagem-header">DECOLAGEM {d}</div>', unsafe_allow_html=True)
-                
-                # Filtra os atletas apenas desta decolagem
                 vagas = df_dia[df_dia['Decolagem'] == d]
-                
                 for _, vaga in vagas.iterrows():
                     status_cor = "🟢" if vaga['Dobrador'] else "🟡"
                     dobrador_txt = f" | Dobrador: {vaga['Dobrador']}" if vaga['Dobrador'] else " | Aguardando Dobragem"
-                    
-                    st.markdown(f"""
-                        <div class="vaga-card">
-                            {status_cor} <b>{vaga['Atleta']}</b> - {vaga['Equipamento']} {dobrador_txt}
-                        </div>
-                    """, unsafe_allow_html=True)
+                    st.markdown(f'<div class="vaga-card">{status_cor} <b>{vaga["Atleta"]}</b> - {vaga["Equipamento"]} {dobrador_txt}</div>', unsafe_allow_html=True)
     else:
-        st.info("Nenhum voo registrado no final de semana.")
+        st.info("Nenhum voo registrado.")
 
 # 3. ÁREA DE DOBRAGEM
 elif aba == "Área de Dobragem":
     st.header(f"🔧 Dobragem - {dia_operacao}")
     meu_nome = st.selectbox("Selecionar Dobrador:", ["TAMIOZZO", "PORTELLA", "SAUL", "GABRIEL", "VINICIUS"])
-    
     pendentes = [v for v in st.session_state.historico_geral if v['Dia'] == dia_operacao and v['Dobrador'] is None]
-    
     if not pendentes:
         st.info(f"Sem paraquedas pendentes para {dia_operacao}.")
     else:
@@ -137,7 +116,7 @@ elif aba == "Área de Dobragem":
                         st.rerun()
                 st.divider()
 
-# 4. FINANCEIRO
+# 4. FINANCEIRO & RESET
 elif aba == "Financeiro":
     st.header("💰 Fechamento do Final de Semana")
     df_tudo = pd.DataFrame(st.session_state.historico_geral)
@@ -160,3 +139,20 @@ elif aba == "Financeiro":
             col_a.metric("Total Acumulado", f"R$ {meus_dados['Valor'].sum()}")
             col_b.metric("Total Dobragens", len(meus_dados))
             st.dataframe(meus_dados[["Dia", "Decolagem", "Atleta", "Equipamento", "Valor"]])
+            
+        # --- BLOCO DE RESET (NOVO) ---
+        st.divider()
+        st.subheader("🚨 Área de Risco")
+        with st.expander("Limpar todos os dados do Sistema"):
+            st.warning("Isso apagará permanentemente todos os registros de Manifesto e Decolagens do final de semana.")
+            confirmacao = st.text_input("Para resetar, digite 'RESET' no campo abaixo:")
+            if st.button("CONFIRMAR RESET TOTAL"):
+                if confirmacao == "RESET":
+                    st.session_state.historico_geral = []
+                    st.session_state.atletas_area = []
+                    st.success("Sistema resetado com sucesso!")
+                    st.rerun()
+                else:
+                    st.error("Palavra de confirmação incorreta.")
+    else:
+        st.info("Nenhum dado registrado.")
