@@ -3,7 +3,7 @@ import pandas as pd
 import gspread
 from google.oauth2.service_account import Credentials
 
-# --- CONEXÃO COM GOOGLE SHEETS ---
+# --- CONEXÃO ---
 scope = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
 creds = Credentials.from_service_account_info(st.secrets["gcp_service_account"], scopes=scope)
 client = gspread.authorize(creds)
@@ -12,163 +12,139 @@ ID_PLANILHA_NOVA = "1CZYDTUfgBhSbJqd4Rvsnb38G7rfE4LuQKdbE4Do-krw"
 
 try:
     spreadsheet = client.open_by_key(ID_PLANILHA_NOVA)
-    # Tenta conectar nas abas. Se não existirem, o erro será exibido de forma clara.
-    sheet = spreadsheet.get_worksheet(0) # Aba de Logs (Primeira)
-    
-    # Busca a aba de manifesto de forma segura
-    try:
-        sheet_manifesto = spreadsheet.worksheet("manifesto")
-    except gspread.exceptions.WorksheetNotFound:
-        sheet_manifesto = spreadsheet.add_worksheet(title="manifesto", rows="100", cols="2")
+    sheet = spreadsheet.get_worksheet(0) # Log Geral
+    sheet_manifesto = spreadsheet.worksheet("manifesto") # Manifesto
 except Exception as e:
     st.error(f"Erro de Conexão: {e}")
     st.stop()
 
-st.set_page_config(page_title="CGP Ops - Sistema Oficial", layout="wide")
+st.set_page_config(page_title="CGP AirOps - Turbo", layout="wide")
 
-# --- FUNÇÕES DE DADOS ---
-def carregar_log():
-    dados = sheet.get_all_records()
-    return pd.DataFrame(dados)
+# --- FUNÇÕES DE CACHE ---
 
-def carregar_atletas_manifesto():
-    # Puxa os nomes da primeira coluna da aba manifesto
+@st.cache_data(ttl=15) # O app consulta o Google no máximo a cada 15 segundos
+def carregar_log_cache():
+    return pd.DataFrame(sheet.get_all_records())
+
+@st.cache_data(ttl=60) # O manifesto muda pouco, cache de 1 minuto
+def carregar_manifesto_cache():
     lista = sheet_manifesto.col_values(1)
     return sorted(lista) if lista else []
 
+def reset_cache():
+    st.cache_data.clear()
+
 # --- NAVEGAÇÃO ---
 st.sidebar.title("🪂 CGP AirOps")
+# Botão de emergência para forçar atualização se alguém estiver ansioso
+if st.sidebar.button("🔄 Sincronizar Agora"):
+    reset_cache()
+    st.rerun()
+
 dia_operacao = st.sidebar.selectbox("📅 Dia da Operação", ["Sexta", "Sábado", "Domingo"])
 aba = st.sidebar.radio("Navegação", ["Manifesto", "Lançar Decolagem", "Área de Dobragem", "Financeiro"])
 
-# 1. MANIFESTO (QUEM CHEGOU NO CGP)
+# 1. MANIFESTO
 if aba == "Manifesto":
     st.header(f"📝 Registro de Chegada - {dia_operacao}")
     with st.form("add_atleta", clear_on_submit=True):
         novo_atleta = st.text_input("Nome do Paraquedista").upper()
-        if st.form_submit_button("Registrar na Área"):
+        if st.form_submit_button("Registrar"):
             if novo_atleta:
                 sheet_manifesto.append_row([novo_atleta])
-                st.success(f"{novo_atleta} adicionado ao manifesto!")
+                reset_cache() # Limpa cache para o nome aparecer na decolagem
+                st.success(f"{novo_atleta} registrado!")
                 st.rerun()
 
-    st.subheader("Atletas presentes no CGP")
-    lista_p = carregar_atletas_manifesto()
-    if lista_p:
-        st.write(", ".join(lista_p))
-    else:
-        st.info("Nenhum atleta registrado no manifesto ainda.")
-    
-    if st.sidebar.button("Limpar Manifesto (Novo FDS)"):
-        sheet_manifesto.clear()
-        st.rerun()
+    st.subheader("Atletas no CGP")
+    lista_p = carregar_manifesto_cache()
+    st.write(", ".join(lista_p) if lista_p else "Ninguém no manifesto.")
 
 # 2. LANÇAR DECOLAGEM
 elif aba == "Lançar Decolagem":
     st.header(f"✈️ Montar Voo - {dia_operacao}")
-    atletas_opcoes = carregar_atletas_manifesto()
+    opcoes = carregar_manifesto_cache()
     
-    with st.expander("➕ Lançar Nova Vaga", expanded=True):
+    with st.expander("➕ Nova Vaga", expanded=True):
         c1, c2, c3 = st.columns(3)
-        num_dec = c1.number_input("Nº Decolagem", min_value=1, step=1)
-        atleta = c2.selectbox("Atleta", atletas_opcoes) if atletas_opcoes else c2.text_input("Nome")
+        num_dec = c1.number_input("Nº Dec", min_value=1, step=1)
+        atleta = c2.selectbox("Atleta", opcoes) if opcoes else c2.text_input("Nome")
         equip = c3.selectbox("Equipamento", ["Student", "Tandem", "Atleta"])
         
-        if st.button("Confirmar no Voo"):
+        if st.button("Confirmar"):
             valor = 30 if equip == "Tandem" else 25
-            pagador = "Escola" if equip != "Atleta" else "Particular"
-            # Salva no Google Sheets (Log Geral)
-            sheet.append_row([dia_operacao, int(num_dec), atleta, equip, valor, pagador, ""])
-            st.success(f"{atleta} lançado na Dec {num_dec}!")
+            pag = "Escola" if equip != "Atleta" else "Particular"
+            sheet.append_row([dia_operacao, int(num_dec), atleta, equip, valor, pag, ""])
+            reset_cache() # Limpa cache para o dobrador ver o novo paraquedas
+            st.success(f"Voo {num_dec} atualizado!")
             st.rerun()
 
     st.divider()
-    st.subheader(f"📋 Espelho de Voo - {dia_operacao}")
-    df_dia = carregar_log()
-    if not df_dia.empty:
-        df_dia = df_dia[df_dia['Dia'] == dia_operacao]
-        if not df_dia.empty:
-            for d in sorted(df_dia['Decolagem'].unique()):
-                with st.expander(f"📦 DECOLAGEM {d}", expanded=True):
-                    vagas = df_dia[df_dia['Decolagem'] == d]
-                    for _, v in vagas.iterrows():
-                        status = "🟢" if v['Dobrador'] else "🟡"
-                        dobrador_info = f" | Dobrador: {v['Dobrador']}" if v['Dobrador'] else " | Pendente"
-                        st.write(f"{status} **{v['Atleta']}** ({v['Equipamento']}){dobrador_info}")
+    df = carregar_log_cache()
+    if not df.empty:
+        df = df[df['Dia'] == dia_operacao]
+        for d in sorted(df['Decolagem'].unique()):
+            with st.expander(f"📦 DECOLAGEM {d}", expanded=True):
+                vagas = df[df['Decolagem'] == d]
+                for _, v in vagas.iterrows():
+                    status = "🟢" if v['Dobrador'] else "🟡"
+                    st.write(f"{status} **{v['Atleta']}** ({v['Equipamento']}) {v['Dobrador']}")
 
 # 3. ÁREA DE DOBRAGEM
 elif aba == "Área de Dobragem":
-    st.header(f"🔧 Área de Dobragem - {dia_operacao}")
-    meu_nome = st.selectbox("Quem está dobrando?", ["TAMIOZZO", "PORTELLA", "SAUL", "GABRIEL", "VINICIUS"])
+    st.header(f"🔧 Dobragem - {dia_operacao}")
+    meu_nome = st.selectbox("Quem é você?", ["TAMIOZZO", "PORTELLA", "SAUL", "GABRIEL", "VINICIUS"])
+    df = carregar_log_cache()
     
-    df_dobra = carregar_log()
-    if not df_dobra.empty:
-        # Filtra apenas o que é de hoje e está sem dobrador assinado
-        pendentes = df_dobra[(df_dobra['Dia'] == dia_operacao) & (df_dobra['Dobrador'] == "")]
-        
+    if not df.empty:
+        pendentes = df[(df['Dia'] == dia_operacao) & (df['Dobrador'] == "")]
         if pendentes.empty:
-            st.info("Tudo dobrado! Aguardando novos pousos...")
+            st.info("Tudo dobrado!")
         else:
-            for index, vaga in pendentes.iterrows():
-                with st.container():
-                    col1, col2, col3 = st.columns([1, 3, 2])
-                    col1.subheader(f"D{vaga['Decolagem']}")
-                    col2.write(f"**{vaga['Atleta']}**\n\n({vaga['Equipamento']})")
-                    if col3.button("Assinar", key=f"job_{index}"):
-                        sheet.update_cell(index + 2, 7, meu_nome)
-                        st.rerun()
+            for idx, vaga in pendentes.iterrows():
+                col1, col2, col3 = st.columns([1, 3, 2])
+                col1.write(f"D{vaga['Decolagem']}")
+                col2.write(f"**{vaga['Atleta']}** ({vaga['Equipamento']})")
+                if col3.button("Dobrei", key=f"btn_{idx}"):
+                    sheet.update_cell(idx + 2, 7, meu_nome)
+                    reset_cache() # Limpa cache para o financeiro atualizar
+                    st.rerun()
                 st.divider()
 
 # 4. FINANCEIRO
 elif aba == "Financeiro":
-    st.header("💰 Fechamento Gerencial")
-    df_fin = carregar_log()
-    
-    if not df_fin.empty:
-        df_ok = df_fin[df_fin['Dobrador'] != ""].copy()
+    st.header("💰 Fechamento")
+    df = carregar_log_cache()
+    if not df.empty:
+        df_ok = df[df['Dobrador'] != ""].copy()
         
-        # --- DASHBOARD ESCOLA ---
-        st.subheader("🏫 Conta da Escola (Student/Tandem)")
+        # RESUMO ESCOLA
+        st.subheader("🏫 Resumo Escola")
         esc = df_ok[df_ok['Pagador'] == "Escola"]
         if not esc.empty:
             c1, c2, c3 = st.columns(3)
             c1.metric("Students", len(esc[esc['Equipamento'] == "Student"]))
             c2.metric("Tandems", len(esc[esc['Equipamento'] == "Tandem"]))
             c3.metric("Total Escola", f"R$ {esc['Valor'].sum()},00")
-            
-            resumo_pag = esc.groupby('Dobrador').agg(
-                Quantidade=('Valor', 'count'),
-                Total_Reais=('Valor', 'sum')
-            ).reset_index()
-            st.table(resumo_pag)
-        else:
-            st.info("Nenhum registro de Student ou Tandem finalizado.")
+            st.table(esc.groupby('Dobrador').agg(Qtd=('Valor','count'), Total=('Valor','sum')).reset_index())
         
-        # --- EXTRATO INDIVIDUAL (AGRUPADO POR ATLETA) ---
+        # EXTRATO INDIVIDUAL (AGRUPADO POR ATLETA)
         st.divider()
-        st.subheader("👤 Extrato Individual (Para Cobrança)")
-        user = st.selectbox("Consultar Dobrador:", ["TAMIOZZO", "PORTELLA", "SAUL", "GABRIEL", "VINICIUS"])
-        meu_extrato = df_ok[df_ok['Dobrador'] == user]
-        
-        if not meu_extrato.empty:
+        u = st.selectbox("Consultar Dobrador:", ["TAMIOZZO", "PORTELLA", "SAUL", "GABRIEL", "VINICIUS"])
+        meu = df_ok[df_ok['Dobrador'] == u]
+        if not meu.empty:
             col_a, col_b = st.columns(2)
-            col_a.metric(f"Total Acumulado", f"R$ {meu_extrato['Valor'].sum()},00")
-            col_b.metric("Total de Peças", len(meu_extrato))
+            col_a.metric(f"Total Acumulado", f"R$ {meu['Valor'].sum()},00")
+            col_b.metric("Total Peças", len(meu))
             
-            # --- NOVA LÓGICA DE AGRUPAMENTO POR ATLETA ---
-            st.write(f"**Resumo de cobrança por Atleta/Equipamento ({user}):**")
-            
-            resumo_por_atleta = meu_extrato.groupby(['Atleta', 'Equipamento']).agg(
+            st.write(f"**Resumo de cobrança por Atleta/Equipamento:**")
+            resumo_atleta = meu.groupby(['Atleta', 'Equipamento']).agg(
                 Dobragens=('Valor', 'count'),
                 Total_a_Receber=('Valor', 'sum')
             ).reset_index()
-            
-            # Exibe a tabela formatada
-            st.dataframe(resumo_por_atleta, use_container_width=True)
-            
-            with st.expander("Ver histórico detalhado (todas as linhas)"):
-                st.dataframe(meu_extrato[["Dia", "Decolagem", "Atleta", "Equipamento", "Valor"]])
-        else:
-            st.info(f"Nenhum registro encontrado para {user}.")
-    else:
-        st.info("Nenhum registro encontrado no banco de dados.")
+            st.dataframe(resumo_atleta, use_container_width=True)
+
+if st.sidebar.button("🚨 RESET TOTAL (DOMINGO)"):
+    sheet.delete_rows(2, sheet.row_count)
+    reset_cache()
+    st.rerun()
