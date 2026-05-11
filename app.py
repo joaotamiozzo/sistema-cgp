@@ -8,12 +8,12 @@ scope = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis
 creds = Credentials.from_service_account_info(st.secrets["gcp_service_account"], scopes=scope)
 client = gspread.authorize(creds)
 
-# ⚠️ COLOQUE O ID DA PLANILHA AQUI (Aquele código longo da URL)
-1CZYDTUfgBhSbJqd4Rvsnb38G7rfE4LuQKdbE4Do-krw = "1CZYDTUfgBhSbJqd4Rvsnb38G7rfE4LuQKdbE4Do-krw" 
+# O NOME DA VARIÁVEL DEVE SER 'ID_PLANILHA_NOVA'
+ID_PLANILHA_NOVA = "1CZYDTUfgBhSbJqd4Rvsnb38G7rfE4LuQKdbE4Do-krw" 
 
 try:
-    # Conectar pelo ID é muito mais seguro que pelo nome
-    spreadsheet = client.open_by_key(1CZYDTUfgBhSbJqd4Rvsnb38G7rfE4LuQKdbE4Do-krw)
+    # Aqui o código usa a variável que definimos acima
+    spreadsheet = client.open_by_key(ID_PLANILHA_NOVA)
     sheet = spreadsheet.get_worksheet(0) 
 except Exception as e:
     st.error(f"Erro de Conexão: {e}")
