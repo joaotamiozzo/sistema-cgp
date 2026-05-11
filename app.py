@@ -122,9 +122,10 @@ elif aba == "Financeiro":
     df_tudo = pd.DataFrame(st.session_state.historico_geral)
     
     if not df_tudo.empty:
-        df_dobrado = df_tudo[df_tudo['Dobrador'].notna()]
+        # Filtra apenas o que já foi assinado pelo dobrador
+        df_dobrado = df_tudo[df_tudo['Dobrador'].notna()].copy()
         
-        # --- NOVO DASHBOARD DA ESCOLA ---
+        # --- DASHBOARD DA ESCOLA ---
         st.subheader("🏫 Resumo Gerencial Escola")
         escola_dados = df_dobrado[df_dobrado['Pagador'] == "Escola"]
         
@@ -135,23 +136,24 @@ elif aba == "Financeiro":
             total_escola = escola_dados['Valor'].sum()
             
             c1, c2, c3 = st.columns(3)
-            c1.metric("Students Dobrados", f"{qtd_student}")
-            c2.metric("Tandems Dobrados", f"{qtd_tandem}")
-            c3.metric("Total a Pagar (Escola)", f"R$ {total_escola},00")
+            c1.metric("Students", f"{qtd_student}")
+            c2.metric("Tandems", f"{qtd_tandem}")
+            c3.metric("Total Escola", f"R$ {total_escola},00")
             
             st.write("---")
-            st.write("**Detalhamento de Pagamento por Dobrador:**")
-            # Tabela que mostra Quem recebe, Quantas dobragens fez e o Valor Total
+            st.write("**Pagamentos por Dobrador (Conta Escola):**")
+            
+            # Agrupamento corrigido
             resumo_pagamento = escola_dados.groupby('Dobrador').agg(
                 Quantidade=('Valor', 'count'),
-                Total_R$=('Valor', 'sum')
+                Total_Reais=('Valor', 'sum')
             ).reset_index()
             
             st.table(resumo_pagamento)
         else:
-            st.info("Nenhuma dobragem de Student ou Tandem registrada ainda.")
+            st.info("Nenhuma dobragem de Student ou Tandem registrada.")
         
-        # --- EXTRATO INDIVIDUAL (IGUAL ANTERIOR) ---
+        # --- EXTRATO INDIVIDUAL ---
         st.divider()
         st.subheader("👤 Extrato Individual do Dobrador")
         consulta = st.selectbox("Verificar nome:", ["TAMIOZZO", "PORTELLA", "SAUL", "GABRIEL", "VINICIUS"])
@@ -168,12 +170,14 @@ elif aba == "Financeiro":
         st.subheader("🚨 Área de Risco")
         with st.expander("Limpar todos os dados do Sistema"):
             st.warning("Isso apagará todos os registros do final de semana.")
-            confirmacao = st.text_input("Para resetar, digite 'RESET':")
+            confirmacao = st.text_input("Para resetar, digite 'RESET' abaixo:")
             if st.button("CONFIRMAR RESET TOTAL"):
                 if confirmacao == "RESET":
                     st.session_state.historico_geral = []
                     st.session_state.atletas_area = []
-                    st.success("Sistema resetado!")
+                    st.success("Sistema resetado com sucesso!")
                     st.rerun()
+                else:
+                    st.error("Digite RESET para confirmar.")
     else:
         st.info("Nenhum dado registrado.")
