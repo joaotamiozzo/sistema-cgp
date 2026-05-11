@@ -18,10 +18,21 @@ st.set_page_config(page_title="Sistema de Dobragem CGP", layout="wide")
 # --- FUNÇÕES DE DADOS ---
 def carregar_dados(aba_nome):
     try:
+        # Tenta abrir a aba com o nome exato
         aba = spreadsheet.worksheet(aba_nome)
         return pd.DataFrame(aba.get_all_records())
     except:
-        return pd.DataFrame()
+        try:
+            # Tenta abrir com a primeira letra maiúscula (ex: Manifesto)
+            aba = spreadsheet.worksheet(aba_nome.capitalize())
+            return pd.DataFrame(aba.get_all_records())
+        except:
+            try:
+                # Tenta abrir tudo em maiúsculo (ex: MANIFESTO)
+                aba = spreadsheet.worksheet(aba_nome.upper())
+                return pd.DataFrame(aba.get_all_records())
+            except:
+                return pd.DataFrame()
 
 # --- INTERFACE DO APP ---
 st.title("🪂 Sistema de Dobragem - CGP")
