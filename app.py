@@ -117,7 +117,6 @@ elif aba == "Área de Dobragem":
                 st.divider()
 
 # 4. FINANCEIRO & RESET
-# 4. FINANCEIRO & RESET
 elif aba == "Financeiro":
     st.header("💰 Fechamento do Final de Semana")
     df_tudo = pd.DataFrame(st.session_state.historico_geral)
