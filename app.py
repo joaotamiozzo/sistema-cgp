@@ -1,96 +1,62 @@
 import streamlit as st
 import pandas as pd
-from datetime import datetime
+import gspread
+from google.oauth2.service_account import Credentials
 
-# Configuração da página
-st.set_page_config(page_title="Sistema CGP - Manifesto e Dobragem", layout="wide")
+# --- CONFIGURAÇÃO DE CONEXÃO ---
+# O Streamlit busca automaticamente o que você salvou no "Secrets"
+scope = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
+creds = Credentials.from_service_account_info(st.secrets["gcp_service_account"], scopes=scope)
+client = gspread.authorize(creds)
 
-# --- SIMULAÇÃO DE BANCO DE DADOS ---
-# Em um app real, essas listas viriam da sua planilha "MASTER DOBRAGENS"
-if 'banco_atletas' not in st.session_state:
-    st.session_state.banco_atletas = ["João Silva", "Pedro Amado", "Ricardo M.", "Ana Souza", "Carlos D."]
+# ⚠️ AJUSTE AQUI: Coloque o nome exato da sua planilha
+NOME_PLANILHA = "MASTER DOBRAGENS" 
+spreadsheet = client.open(NOME_PLANILHA)
 
-if 'decolagens' not in st.session_state:
-    st.session_state.decolagens = [] # Lista de decolagens criadas pela Paola
+st.set_page_config(page_title="Sistema de Dobragem CGP", layout="wide")
 
-# --- INTERFACE ---
-st.title("🪂 Gestão de Saltos e Dobragem - CGP")
+# --- FUNÇÕES DE DADOS ---
+def carregar_dados(aba_nome):
+    try:
+        aba = spreadsheet.worksheet(aba_nome)
+        return pd.DataFrame(aba.get_all_records())
+    except:
+        return pd.DataFrame()
 
-aba_usuario = st.sidebar.radio("Acessar como:", ["Paola (Manifesto)", "Dobrador (Área de Dobragem)", "Relatórios (Financeiro)"])
+# --- INTERFACE DO APP ---
+st.title("🪂 Sistema de Dobragem - CGP")
 
-# ---------------------------------------------------------
-# MODO PAOLA: CRIAÇÃO DE DECOLAGENS
-# ---------------------------------------------------------
-if aba_usuario == "Paola (Manifesto)":
-    st.header("📋 Montar Decolagem")
-    with st.form("nova_decolagem"):
-        col1, col2 = st.columns(2)
-        with col1:
-            num_decolagem = st.number_input("Número da Decolagem", min_value=1, step=1)
-            dia = st.selectbox("Dia", ["Sexta", "Sábado", "Domingo"])
-        with col2:
-            atletas_na_vaga = st.multiselect("Selecionar Atletas/Alunos (Banco de Dados)", st.session_state.banco_atletas)
-            tipo_equip = st.selectbox("Tipo de Equipamento Padrão", ["Student", "Tandem", "Atleta"])
-        
-        btn_criar = st.form_submit_button("Lançar Decolagem para Dobragem")
-        
-        if btn_criar:
-            for nome in atletas_na_vaga:
-                st.session_state.decolagens.append({
-                    "Decolagem": num_decolagem,
-                    "Atleta": nome,
-                    "Equipamento": tipo_equip,
-                    "Dobrador": "Pendente",
-                    "Status": "Em voo",
-                    "Valor": 30 if tipo_equip == "Tandem" else 25,
-                    "Pagador": "Escola" if tipo_equip in ["Student", "Tandem"] else "Particular"
-                })
-            st.success(f"Decolagem {num_decolagem} enviada para a área de dobragem!")
+# Sidebar para navegação
+usuario = st.sidebar.radio("Acessar como:", ["Paola (Manifesto)", "Dobrador", "Relatórios"])
 
-# ---------------------------------------------------------
-# MODO DOBRADOR: REGISTRAR QUEM DOBROU
-# ---------------------------------------------------------
-elif aba_usuario == "Dobrador (Área de Dobragem)":
-    st.header("🔧 Área de Dobragem")
-    meu_nome = st.selectbox("Selecione seu nome:", ["TAMIOZZO", "PORTELLA", "SAUL", "GABRIEL", "VINICIUS"])
+if usuario == "Paola (Manifesto)":
+    st.header("📋 Manifesto e Decolagens")
+    st.write("Dados puxados da aba 'manifesto' da sua planilha.")
     
-    if not st.session_state.decolagens:
-        st.info("Aguardando a Paola lançar decolagens...")
+    df_manifesto = carregar_dados("manifesto")
+    if not df_manifesto.empty:
+        st.dataframe(df_manifesto)
     else:
-        df_dec = pd.DataFrame(st.session_state.decolagens)
-        # Mostrar apenas o que ainda não foi dobrado
-        pendentes = df_dec[df_dec['Dobrador'] == "Pendente"]
-        
-        if pendentes.empty:
-            st.success("Tudo dobrado por aqui! 🍻")
-        else:
-            for i, row in pendentes.iterrows():
-                with st.expander(f"Vaga: {row['Atleta']} | Decolagem: {row['Decolagem']} ({row['Equipamento']})"):
-                    if st.button(f"Eu dobrei este ({row['Equipamento']})", key=f"btn_{i}"):
-                        st.session_state.decolagens[i]['Dobrador'] = meu_nome
-                        st.session_state.decolagens[i]['Status'] = "Dobrado"
-                        st.rerun()
+        st.warning("Aba 'manifesto' não encontrada ou está vazia.")
 
-# ---------------------------------------------------------
-# MODO FINANCEIRO: FECHAMENTO DA PAOLA
-# ---------------------------------------------------------
-elif aba_usuario == "Relatórios (Financeiro)":
-    st.header("📊 Fechamento para Pagamento")
+elif usuario == "Dobrador":
+    st.header("🔧 Área de Dobragem")
+    nome_dobrador = st.selectbox("Quem é você?", ["TAMIOZZO", "PORTELLA", "SAUL", "GABRIEL", "VINICIUS"])
     
-    if st.session_state.db or st.session_state.decolagens:
-        df_final = pd.DataFrame(st.session_state.decolagens)
-        df_final = df_final[df_final['Dobrador'] != "Pendente"]
-        
-        if not df_final.empty:
-            # Filtro para a Paola: O que a Escola Deve
-            st.subheader("Dívida da Escola (Student & Tandem)")
-            escola_df = df_final[df_final['Pagador'] == "Escola"]
-            resumo_escola = escola_df.groupby('Dobrador')['Valor'].sum().reset_index()
-            st.table(resumo_escola)
-            
-            # Filtro para Atletas: O que o dobrador recebe por fora
-            st.subheader("Particular (Atleta paga direto ao dobrador)")
-            particular_df = df_final[df_final['Pagador'] == "Particular"]
-            st.table(particular_df[['Atleta', 'Dobrador', 'Valor']])
-        else:
-            st.warning("Nenhuma dobragem concluída ainda.")
+    # Exemplo: Mostrar decolagens de hoje (Sexta, Sábado ou Domingo)
+    dia_atual = st.selectbox("Selecione o Dia:", ["sexta", "sábado", "domingo"])
+    df_dia = carregar_dados(dia_atual)
+    
+    if not df_dia.empty:
+        st.write(f"Atletas em {dia_atual}:")
+        st.dataframe(df_dia)
+        # Aqui podemos adicionar os botões para marcar a dobragem depois
+    else:
+        st.info(f"Nenhum dado encontrado na aba '{dia_atual}'.")
+
+elif usuario == "Relatórios":
+    st.header("📊 Fechamento Financeiro")
+    st.write("Resumo baseado na aba 'Dashboard'")
+    df_dash = carregar_dados("Dashboard")
+    if not df_dash.empty:
+        st.table(df_dash)
