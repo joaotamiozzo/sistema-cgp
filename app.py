@@ -3,89 +3,73 @@ import pandas as pd
 import gspread
 from google.oauth2.service_account import Credentials
 
-# --- CONFIGURAÇÃO DE CONEXÃO ---
-# O Streamlit busca automaticamente o que você salvou no "Secrets"
+# --- CONEXÃO COM GOOGLE SHEETS ---
 scope = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
 creds = Credentials.from_service_account_info(st.secrets["gcp_service_account"], scopes=scope)
 client = gspread.authorize(creds)
 
-# ⚠️ AJUSTE AQUI: Coloque o nome exato da sua planilha
+# Nome da sua planilha
 NOME_PLANILHA = "MASTER DOBRAGENS" 
 spreadsheet = client.open(NOME_PLANILHA)
 
-st.set_page_config(page_title="Sistema de Dobragem CGP", layout="wide")
+st.set_page_config(page_title="Sistema CGP - Dobragem", layout="wide")
 
-# --- FUNÇÕES DE DADOS ---
-def buscar_nomes_manifesto():
+# --- FUNÇÃO PARA CARREGAR OS DADOS DO DIA ---
+def carregar_dados_dia(nome_aba):
     try:
-        # Busca a aba 'manifesto' (ajusta para maiúscula se necessário)
-        try:
-            sheet = spreadsheet.worksheet("manifesto")
-        except:
-            sheet = spreadsheet.worksheet("Manifesto")
-            
-        # Puxa apenas os valores da Coluna A
-        # col_values(1) pega a primeira coluna inteira
-        nomes = sheet.col_values(1)
-        
-        # Remove o primeiro item se ele for o cabeçalho (ex: "Nome" ou "Atleta")
-        if nomes:
-            return nomes[1:] 
-        return []
+        # Tenta carregar a aba (Sexta, Sábado ou Domingo)
+        aba = spreadsheet.worksheet(nome_aba)
+        # Puxa todos os dados. O head=1 assume que a primeira linha é o cabeçalho
+        dados = aba.get_all_records()
+        return pd.DataFrame(dados), aba
     except Exception as e:
-        st.error(f"Erro ao buscar coluna A: {e}")
-        return []
+        st.error(f"Erro ao acessar a aba '{nome_aba}': {e}")
+        return pd.DataFrame(), None
 
-# --- NA INTERFACE DO APP ---
-if usuario == "Paola (Manifesto)":
-    st.header("📋 Atletas no Manifesto")
+# --- INTERFACE ---
+st.title("🪂 Operação de Dobragem CGP")
+
+# Sidebar para configurações
+st.sidebar.header("Configurações")
+dia_selecionado = st.sidebar.selectbox("Selecione o Dia:", ["Sexta", "Sábado", "Domingo"])
+dobrador_atual = st.sidebar.selectbox("Seu Nome (Dobrador):", ["TAMIOZZO", "PORTELLA", "SAUL", "GABRIEL", "VINICIUS"])
+
+df, aba_sheet = carregar_dados_dia(dia_selecionado)
+
+if not df.empty:
+    st.subheader(f"Lista de Decolagens - {dia_selecionado}")
     
-    lista_atletas = buscar_nomes_manifesto()
-    
-    if lista_atletas:
-        # Exibe os nomes em uma lista limpa ou em um selectbox
-        st.write(f"Existem **{len(lista_atletas)}** atletas registrados hoje:")
-        
-        # Criando uma tabela simples apenas com os nomes
-        df_nomes = pd.DataFrame(lista_atletas, columns=["Nome do Atleta"])
-        st.table(df_nomes) 
-    else:
-        st.warning("Nenhum nome encontrado na Coluna A da aba Manifesto.")
+    # Criamos os cards para cada linha da planilha
+    for index, row in df.iterrows():
+        # Verificamos o que está na Coluna C (que no Python é o nome da coluna no cabeçalho)
+        # IMPORTANTE: No seu Excel/Sheets, o título da Coluna C deve ser exatamente "Dobrador"
+        # Se o título for outro, mude 'Dobrador' abaixo para o nome que está na sua planilha.
+        status_dobrador = str(row.get('Dobrador', '')).strip()
 
-# --- INTERFACE DO APP ---
-st.title("🪂 Sistema de Dobragem - CGP")
+        # Se a coluna C estiver vazia, mostra o botão para assinar
+        if status_dobrador == "" or status_dobrador == "0" or pd.isna(row.get('Dobrador')):
+            with st.container():
+                c1, c2, c3 = st.columns([1, 3, 2])
+                
+                with c1:
+                    st.write(f"**Dec:** {row.get('Decolagem', 'S/N')}")
+                with c2:
+                    st.write(f"**Atleta:** {row.get('Atleta', 'Vazio')} \n\n ({row.get('Equipamento', '-')})")
+                with c3:
+                    if st.button(f"Assinar Dobragem", key=f"btn_{index}"):
+                        # Coluna C = Número 3
+                        # Linha = index + 2 (1 para o cabeçalho e +1 porque o Pandas começa em 0)
+                        aba_sheet.update_cell(index + 2, 3, dobrador_atual)
+                        st.success(f"Registrado para {dobrador_atual}!")
+                        st.rerun()
+            st.divider()
+        else:
+            # Se já houver alguém na Coluna C, apenas mostra quem foi
+            st.info(f"✅ Dec {row.get('Decolagem')} - {row.get('Atleta')} | Dobrado por: {status_dobrador}")
 
-# Sidebar para navegação
-usuario = st.sidebar.radio("Acessar como:", ["Paola (Manifesto)", "Dobrador", "Relatórios"])
+else:
+    st.info(f"Aguardando lançamentos na aba de {dia_selecionado}...")
 
-if usuario == "Paola (Manifesto)":
-    st.header("📋 Manifesto e Decolagens")
-    st.write("Dados puxados da aba 'manifesto' da sua planilha.")
-    
-    df_manifesto = carregar_dados("manifesto")
-    if not df_manifesto.empty:
-        st.dataframe(df_manifesto)
-    else:
-        st.warning("Aba 'manifesto' não encontrada ou está vazia.")
-
-elif usuario == "Dobrador":
-    st.header("🔧 Área de Dobragem")
-    nome_dobrador = st.selectbox("Quem é você?", ["TAMIOZZO", "PORTELLA", "SAUL", "GABRIEL", "VINICIUS"])
-    
-    # Exemplo: Mostrar decolagens de hoje (Sexta, Sábado ou Domingo)
-    dia_atual = st.selectbox("Selecione o Dia:", ["sexta", "sábado", "domingo"])
-    df_dia = carregar_dados(dia_atual)
-    
-    if not df_dia.empty:
-        st.write(f"Atletas em {dia_atual}:")
-        st.dataframe(df_dia)
-        # Aqui podemos adicionar os botões para marcar a dobragem depois
-    else:
-        st.info(f"Nenhum dado encontrado na aba '{dia_atual}'.")
-
-elif usuario == "Relatórios":
-    st.header("📊 Fechamento Financeiro")
-    st.write("Resumo baseado na aba 'Dashboard'")
-    df_dash = carregar_dados("Dashboard")
-    if not df_dash.empty:
-        st.table(df_dash)
+# Botão de atualizar manual
+if st.sidebar.button("🔄 Atualizar Lista"):
+    st.rerun()
