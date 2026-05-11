@@ -16,23 +16,41 @@ spreadsheet = client.open(NOME_PLANILHA)
 st.set_page_config(page_title="Sistema de Dobragem CGP", layout="wide")
 
 # --- FUNÇÕES DE DADOS ---
-def carregar_dados(aba_nome):
+def buscar_nomes_manifesto():
     try:
-        # Tenta abrir a aba com o nome exato
-        aba = spreadsheet.worksheet(aba_nome)
-        return pd.DataFrame(aba.get_all_records())
-    except:
+        # Busca a aba 'manifesto' (ajusta para maiúscula se necessário)
         try:
-            # Tenta abrir com a primeira letra maiúscula (ex: Manifesto)
-            aba = spreadsheet.worksheet(aba_nome.capitalize())
-            return pd.DataFrame(aba.get_all_records())
+            sheet = spreadsheet.worksheet("manifesto")
         except:
-            try:
-                # Tenta abrir tudo em maiúsculo (ex: MANIFESTO)
-                aba = spreadsheet.worksheet(aba_nome.upper())
-                return pd.DataFrame(aba.get_all_records())
-            except:
-                return pd.DataFrame()
+            sheet = spreadsheet.worksheet("Manifesto")
+            
+        # Puxa apenas os valores da Coluna A
+        # col_values(1) pega a primeira coluna inteira
+        nomes = sheet.col_values(1)
+        
+        # Remove o primeiro item se ele for o cabeçalho (ex: "Nome" ou "Atleta")
+        if nomes:
+            return nomes[1:] 
+        return []
+    except Exception as e:
+        st.error(f"Erro ao buscar coluna A: {e}")
+        return []
+
+# --- NA INTERFACE DO APP ---
+if usuario == "Paola (Manifesto)":
+    st.header("📋 Atletas no Manifesto")
+    
+    lista_atletas = buscar_nomes_manifesto()
+    
+    if lista_atletas:
+        # Exibe os nomes em uma lista limpa ou em um selectbox
+        st.write(f"Existem **{len(lista_atletas)}** atletas registrados hoje:")
+        
+        # Criando uma tabela simples apenas com os nomes
+        df_nomes = pd.DataFrame(lista_atletas, columns=["Nome do Atleta"])
+        st.table(df_nomes) 
+    else:
+        st.warning("Nenhum nome encontrado na Coluna A da aba Manifesto.")
 
 # --- INTERFACE DO APP ---
 st.title("🪂 Sistema de Dobragem - CGP")
