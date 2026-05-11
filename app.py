@@ -144,20 +144,31 @@ elif aba == "Financeiro":
         else:
             st.info("Nenhum registro de Student ou Tandem finalizado.")
         
-        # --- EXTRATO INDIVIDUAL ---
+        # --- EXTRATO INDIVIDUAL (AGRUPADO POR ATLETA) ---
         st.divider()
-        st.subheader("👤 Extrato Individual")
+        st.subheader("👤 Extrato Individual (Para Cobrança)")
         user = st.selectbox("Consultar Dobrador:", ["TAMIOZZO", "PORTELLA", "SAUL", "GABRIEL", "VINICIUS"])
         meu_extrato = df_ok[df_ok['Dobrador'] == user]
+        
         if not meu_extrato.empty:
             col_a, col_b = st.columns(2)
-            col_a.metric(f"Total {user}", f"R$ {meu_extrato['Valor'].sum()},00")
-            col_b.metric("Total Peças", len(meu_extrato))
-            st.dataframe(meu_extrato[["Dia", "Decolagem", "Atleta", "Equipamento", "Valor"]])
+            col_a.metric(f"Total Acumulado", f"R$ {meu_extrato['Valor'].sum()},00")
+            col_b.metric("Total de Peças", len(meu_extrato))
+            
+            # --- NOVA LÓGICA DE AGRUPAMENTO POR ATLETA ---
+            st.write(f"**Resumo de cobrança por Atleta/Equipamento ({user}):**")
+            
+            resumo_por_atleta = meu_extrato.groupby(['Atleta', 'Equipamento']).agg(
+                Dobragens=('Valor', 'count'),
+                Total_a_Receber=('Valor', 'sum')
+            ).reset_index()
+            
+            # Exibe a tabela formatada
+            st.dataframe(resumo_por_atleta, use_container_width=True)
+            
+            with st.expander("Ver histórico detalhado (todas as linhas)"):
+                st.dataframe(meu_extrato[["Dia", "Decolagem", "Atleta", "Equipamento", "Valor"]])
+        else:
+            st.info(f"Nenhum registro encontrado para {user}.")
     else:
         st.info("Nenhum registro encontrado no banco de dados.")
-
-if st.sidebar.button("🚨 RESET LOG (DOMINGO)"):
-    # Apaga as linhas de dados, mantendo o cabeçalho
-    sheet.delete_rows(2, sheet.row_count)
-    st.rerun()
