@@ -10,10 +10,10 @@ creds = Credentials.from_service_account_info(st.secrets["gcp_service_account"],
 client = gspread.authorize(creds)
 
 # ⚠️ AJUSTE AQUI: Coloque o nome exato da sua planilha nova
-Manifest OPS = "Manifest OPS" 
+Manifest_OPS = "Manifest_OPS" 
 
 try:
-    spreadsheet = client.open(Manifest OPS)
+    spreadsheet = client.open(Manifest_OPS)
     sheet = spreadsheet.get_worksheet(0) # Pega a primeira aba da planilha
 except Exception as e:
     st.error(f"Erro ao conectar na planilha: {e}")
