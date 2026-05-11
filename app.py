@@ -2,100 +2,91 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime
 
-# Configurações de Design
-st.set_page_config(page_title="Sistema CGP - Dobragem", layout="wide")
+# Configurações de Página
+st.set_page_config(page_title="Sistema CGP - Final de Semana", layout="wide")
 
-# --- BANCO DE DADOS (Simulado em Session State para persistência na sessão) ---
-# Em um passo futuro, conectaremos com gspread para salvar permanentemente.
-if 'atletas_presentes' not in st.session_state:
-    st.session_state.atletas_presentes = []
-if 'historico_decolagens' not in st.session_state:
-    st.session_state.historico_decolagens = []
+# --- INICIALIZAÇÃO DO BANCO DE DADOS TEMPORÁRIO ---
+# Nota: Enquanto não conectarmos ao Google Sheets, os dados ficam salvos nesta sessão.
+if 'historico_geral' not in st.session_state:
+    st.session_state.historico_geral = []
+if 'atletas_area' not in st.session_state:
+    st.session_state.atletas_area = []
 
-# --- ESTILIZAÇÃO ---
+# --- ESTILO ---
 st.markdown("""
     <style>
-    .stButton>button { width: 100%; border-radius: 5px; height: 3em; }
-    .status-badge { padding: 5px; border-radius: 5px; color: white; font-weight: bold; }
+    .stButton>button { width: 100%; height: 3em; }
+    .card { border: 1px solid #ddd; padding: 15px; border-radius: 10px; margin-bottom: 10px; background-color: #f9f9f9; }
     </style>
     """, unsafe_allow_html=True)
 
-# --- NAVEGAÇÃO ---
-st.sidebar.title("🪂 CGP Operacional")
-aba = st.sidebar.radio("Navegação", ["Manifesto", "Decolagens", "Área de Dobragem", "Dashboard / Financeiro"])
+# --- NAVEGAÇÃO LATERAL ---
+st.sidebar.title("🪂 CGP AirOps")
+dia_operacao = st.sidebar.selectbox("📅 Dia da Operação", ["Sexta", "Sábado", "Domingo"])
+aba = st.sidebar.radio("Navegação", ["Manifesto", "Lançar Decolagem", "Área de Dobragem", "Financeiro (Acumulado)"])
 
 # ---------------------------------------------------------
-# 1. MANIFESTO (PAOLA CADASTRA QUEM CHEGOU)
+# 1. MANIFESTO (QUEM CHEGOU NO FINAL DE SEMANA)
 # ---------------------------------------------------------
 if aba == "Manifesto":
-    st.header("📝 Atletas na Área")
-    with st.form("add_atleta"):
-        nome_novo = st.text_input("Nome do Atleta/Aluno")
-        btn_add = st.form_submit_button("Registrar Chegada")
-        if btn_add and nome_novo:
-            if nome_novo not in st.session_state.atletas_presentes:
-                st.session_state.atletas_presentes.append(nome_novo)
-                st.success(f"{nome_novo} adicionado à lista do dia!")
+    st.header(f"📝 Registro de Atletas - {dia_operacao}")
+    with st.form("chegada"):
+        nome = st.text_input("Nome do Paraquedista")
+        add = st.form_submit_button("Registrar na Área")
+        if add and nome:
+            if nome not in st.session_state.atletas_area:
+                st.session_state.atletas_area.append(nome)
+                st.success(f"{nome} pronto para saltar!")
     
-    st.subheader("Lista de Presença")
-    st.write(st.session_state.atletas_presentes)
-    if st.button("Limpar Lista do Dia"):
-        st.session_state.atletas_presentes = []
-        st.rerun()
+    st.subheader("Atletas presentes no CGP")
+    st.write(", ".join(st.session_state.atletas_area) if st.session_state.atletas_area else "Ninguém registrado.")
 
 # ---------------------------------------------------------
-# 2. DECOLAGENS (PAOLA MONTA OS VOOS)
+# 2. LANÇAR DECOLAGEM (PAOLA)
 # ---------------------------------------------------------
-elif aba == "Decolagens":
-    st.header("✈️ Lançar Decolagem")
+elif aba == "Lançar Decolagem":
+    st.header(f"✈️ Montar Voo - {dia_operacao}")
     
-    if not st.session_state.atletas_presentes:
+    if not st.session_state.atletas_area:
         st.warning("Cadastre atletas no Manifesto primeiro.")
     else:
-        with st.expander("Abrir Painel de Lançamento", expanded=True):
+        with st.container():
             col1, col2, col3 = st.columns(3)
             with col1:
                 num_dec = st.number_input("Nº Decolagem", min_value=1, step=1)
             with col2:
-                atleta_selecionado = st.selectbox("Atleta", st.session_state.atletas_presentes)
+                atleta = st.selectbox("Atleta", st.session_state.atletas_area)
             with col3:
-                tipo_equip = st.selectbox("Equipamento", ["Student", "Tandem", "Atleta (Próprio)"])
+                equip = st.selectbox("Equipamento", ["Student", "Tandem", "Atleta (Próprio)"])
             
-            if st.button("Confirmar Vaga no Voo"):
-                # Define valores e quem paga
-                valor = 30 if tipo_equip == "Tandem" else 25
-                pagador = "Escola" if tipo_equip in ["Student", "Tandem"] else "Particular"
+            if st.button("Lançar no Sistema"):
+                valor = 30 if equip == "Tandem" else 25
+                pagador = "Escola" if equip in ["Student", "Tandem"] else "Particular"
                 
-                nova_vaga = {
-                    "id": len(st.session_state.historico_decolagens),
+                st.session_state.historico_geral.append({
+                    "id": len(st.session_state.historico_geral),
+                    "Dia": dia_operacao,
                     "Decolagem": num_dec,
-                    "Atleta": atleta_selecionado,
-                    "Equipamento": tipo_equip,
+                    "Atleta": atleta,
+                    "Equipamento": equip,
                     "Valor": valor,
                     "Pagador": pagador,
-                    "Dobrador": None,
-                    "Hora": datetime.now().strftime("%H:%M")
-                }
-                st.session_state.historico_decolagens.append(nova_vaga)
-                st.toast(f"Vaga {atleta_selecionado} lançada!")
-
-        st.divider()
-        st.subheader("Voos Lançados (Aguardando Dobragem)")
-        df_view = pd.DataFrame(st.session_state.historico_decolagens)
-        if not df_view.empty:
-            st.dataframe(df_view[df_view['Dobrador'].isna()])
+                    "Dobrador": None
+                })
+                st.toast(f"Vaga de {atleta} lançada!")
 
 # ---------------------------------------------------------
-# 3. ÁREA DE DOBRAGEM (VOCÊ E OS GURIS ASSINAM)
+# 3. ÁREA DE DOBRAGEM (GURIS)
 # ---------------------------------------------------------
 elif aba == "Área de Dobragem":
-    st.header("🔧 Dobragem")
-    meu_nome = st.selectbox("Selecione seu nome:", ["TAMIOZZO", "PORTELLA", "SAUL", "GABRIEL", "VINICIUS"])
+    st.header(f"🔧 Dobragem - {dia_operacao}")
+    meu_nome = st.selectbox("Selecionar Dobrador:", ["TAMIOZZO", "PORTELLA", "SAUL", "GABRIEL", "VINICIUS"])
     
-    pendentes = [v for v in st.session_state.historico_decolagens if v['Dobrador'] is None]
+    # Filtra apenas o que é do dia e não foi dobrado
+    pendentes = [v for v in st.session_state.historico_geral if v['Dia'] == dia_operacao and v['Dobrador'] is None]
     
     if not pendentes:
-        st.info("Nenhum paraquedas pendente no momento. Bom descanso!")
+        st.info(f"Sem paraquedas pendentes para {dia_operacao}.")
     else:
         for vaga in pendentes:
             with st.container():
@@ -104,42 +95,51 @@ elif aba == "Área de Dobragem":
                     st.subheader(f"D{vaga['Decolagem']}")
                 with c2:
                     st.write(f"**{vaga['Atleta']}**")
-                    st.caption(f"{vaga['Equipamento']} | Valor: R$ {vaga['Valor']}")
+                    st.caption(f"{vaga['Equipamento']}")
                 with c3:
-                    if st.button(f"Assinar Dobragem", key=f"vaga_{vaga['id']}"):
+                    if st.button(f"Dobrei", key=f"job_{vaga['id']}"):
                         vaga['Dobrador'] = meu_nome
-                        st.success(f"Dobragem registrada para {meu_nome}!")
                         st.rerun()
                 st.divider()
 
 # ---------------------------------------------------------
-# 4. DASHBOARD / FINANCEIRO
+# 4. FINANCEIRO (ACUMULADO DO FDS)
 # ---------------------------------------------------------
-elif aba == "Dashboard / Financeiro":
-    st.header("📊 Fechamento Financeiro")
+elif aba == "Financeiro (Acumulado)":
+    st.header("💰 Fechamento do Final de Semana")
     
-    df_final = pd.DataFrame(st.session_state.historico_decolagens)
-    df_final = df_final[df_final['Dobrador'].notna()] # Apenas o que foi dobrado
+    df_tudo = pd.DataFrame(st.session_state.historico_geral)
     
-    if df_final.empty:
-        st.warning("Nenhum dado financeiro para exibir ainda.")
+    if df_tudo.empty:
+        st.info("Aguardando registros para calcular o financeiro.")
     else:
-        # VISÃO DA PAOLA (Escola)
-        st.subheader("🏫 Conta da Escola (Student e Tandem)")
-        escola_df = df_final[df_final['Pagador'] == "Escola"]
-        if not escola_df.empty:
-            resumo_escola = escola_df.groupby('Dobrador')['Valor'].sum().reset_index()
+        # Filtra apenas o que já foi assinado pelo dobrador
+        df_dobrado = df_tudo[df_tudo['Dobrador'].notna()]
+        
+        # TABELA GERAL PARA A RECEPÇÃO
+        st.subheader("🏫 Total devido pela Escola (Student/Tandem)")
+        escola = df_dobrado[df_dobrado['Pagador'] == "Escola"]
+        if not escola.empty:
+            resumo_escola = escola.groupby('Dobrador')['Valor'].sum().reset_index()
             st.table(resumo_escola)
         
-        # VISÃO DO DOBRADOR (Individual)
+        # CONSULTA INDIVIDUAL
         st.divider()
-        st.subheader("👤 Consulta Individual do Dobrador")
-        consulta_nome = st.selectbox("Ver relatório de:", ["TAMIOZZO", "PORTELLA", "SAUL", "GABRIEL", "VINICIUS"])
-        meus_registros = df_final[df_final['Dobrador'] == consulta_nome]
+        st.subheader("👤 Extrato do Dobrador")
+        consulta = st.selectbox("Verificar nome:", ["TAMIOZZO", "PORTELLA", "SAUL", "GABRIEL", "VINICIUS"])
+        meus_dados = df_dobrado[df_dobrado['Dobrador'] == consulta]
         
-        if not meus_registros.empty:
-            st.write(f"**Total a receber:** R$ {meus_registros['Valor'].sum()},00")
-            st.write(f"Quantidade de dobragens: {len(meus_registros)}")
-            st.dataframe(meus_registros[["Decolagem", "Atleta", "Equipamento", "Valor", "Pagador"]])
+        if not meus_dados.empty:
+            col_a, col_b = st.columns(2)
+            col_a.metric("Total Geral", f"R$ {meus_dados['Valor'].sum()}")
+            col_b.metric("Qtd Dobragens", len(meus_dados))
+            
+            # Detalhamento por dia para facilitar o acerto
+            st.write("Detalhamento por dia:")
+            resumo_dia = meus_dados.groupby('Dia')['Valor'].sum().reset_index()
+            st.dataframe(resumo_dia)
+            
+            with st.expander("Ver todos os atletas que dobrei"):
+                st.dataframe(meus_dados[["Dia", "Decolagem", "Atleta", "Equipamento", "Valor"]])
         else:
-            st.info("Nenhum registro para este dobrador.")
+            st.write("Nenhum registro encontrado para este dobrador.")
