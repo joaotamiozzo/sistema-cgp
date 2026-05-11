@@ -4,33 +4,37 @@ import gspread
 from google.oauth2.service_account import Credentials
 
 # --- CONEXÃO COM A NOVA PLANILHA ---
-# Certifique-se de que o e-mail do robô está compartilhado nesta nova planilha!
 scope = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
 creds = Credentials.from_service_account_info(st.secrets["gcp_service_account"], scopes=scope)
 client = gspread.authorize(creds)
 
-# ⚠️ AJUSTE AQUI: Coloque o nome exato da sua planilha nova
-Manifest_OPS = "Manifest_OPS" 
+# ⚠️ COLOQUE O ID DA PLANILHA AQUI (Aquele código longo da URL)
+1CZYDTUfgBhSbJqd4Rvsnb38G7rfE4LuQKdbE4Do-krw = "1CZYDTUfgBhSbJqd4Rvsnb38G7rfE4LuQKdbE4Do-krw" 
 
 try:
-    spreadsheet = client.open(Manifest_OPS)
-    sheet = spreadsheet.get_worksheet(0) # Pega a primeira aba da planilha
+    # Conectar pelo ID é muito mais seguro que pelo nome
+    spreadsheet = client.open_by_key(1CZYDTUfgBhSbJqd4Rvsnb38G7rfE4LuQKdbE4Do-krw)
+    sheet = spreadsheet.get_worksheet(0) 
 except Exception as e:
-    st.error(f"Erro ao conectar na planilha: {e}")
+    st.error(f"Erro de Conexão: {e}")
     st.stop()
 
+# --- O RESTO DO CÓDIGO SEGUE IGUAL ---
 st.set_page_config(page_title="CGP Ops - Real Time", layout="wide")
 
-# --- FUNÇÕES DE SINCRONIZAÇÃO ---
 def carregar_dados():
-    dados = sheet.get_all_records()
-    return pd.DataFrame(dados)
+    try:
+        dados = sheet.get_all_records()
+        return pd.DataFrame(dados)
+    except:
+        # Caso a planilha esteja totalmente vazia (sem cabeçalho)
+        return pd.DataFrame()
 
 def salvar_no_google(nova_vaga):
     sheet.append_row(list(nova_vaga.values()))
 
 def assinar_no_google(linha_index, nome_dobrador):
-    # Coluna G (Dobrador) é a 7. No gspread, a linha 1 é o cabeçalho, então usamos index + 2
+    # Coluna G é a 7ª. 
     sheet.update_cell(linha_index + 2, 7, nome_dobrador)
 
 # --- INTERFACE ---
@@ -38,10 +42,9 @@ st.sidebar.title("🪂 CGP AirOps")
 dia_operacao = st.sidebar.selectbox("📅 Dia da Operação", ["Sexta", "Sábado", "Domingo"])
 aba = st.sidebar.radio("Navegação", ["Manifesto/Decolagem", "Área de Dobragem", "Dashboard Escola", "Extrato Dobrador"])
 
-# Carrega os dados da nuvem a cada ação
 df_db = carregar_dados()
 
-# 1. MANIFESTO E DECOLAGEM (PAOLA)
+# 1. MANIFESTO E DECOLAGEM
 if aba == "Manifesto/Decolagem":
     st.header(f"✈️ Montar Voo - {dia_operacao}")
     with st.form("form_voo"):
@@ -51,70 +54,65 @@ if aba == "Manifesto/Decolagem":
         equip = c3.selectbox("Equipamento", ["Student", "Tandem", "Atleta"])
         
         if st.form_submit_button("Lançar no Sistema"):
-            valor = 30 if equip == "Tandem" else 25
-            pagador = "Escola" if equip != "Atleta" else "Particular"
-            vaga = {
-                "Dia": dia_operacao, "Decolagem": num_dec, "Atleta": atleta,
-                "Equipamento": equip, "Valor": valor, "Pagador": pagador, "Dobrador": ""
-            }
-            salvar_no_google(vaga)
-            st.success("Lançado com sucesso!")
-            st.rerun()
+            if atleta:
+                valor = 30 if equip == "Tandem" else 25
+                pagador = "Escola" if equip != "Atleta" else "Particular"
+                vaga = {
+                    "Dia": dia_operacao, "Decolagem": num_dec, "Atleta": atleta,
+                    "Equipamento": equip, "Valor": valor, "Pagador": pagador, "Dobrador": ""
+                }
+                salvar_no_google(vaga)
+                st.success("Lançado!")
+                st.rerun()
+            else:
+                st.warning("Coloque o nome do atleta!")
 
-# 2. ÁREA DE DOBRAGEM (GURIS)
+# 2. ÁREA DE DOBRAGEM
 elif aba == "Área de Dobragem":
     st.header(f"🔧 Dobragem - {dia_operacao}")
     meu_nome = st.selectbox("Selecione seu nome:", ["TAMIOZZO", "PORTELLA", "SAUL", "GABRIEL", "VINICIUS"])
     
     if not df_db.empty:
-        # Filtra apenas o que é do dia e que o campo Dobrador está vazio
-        pendentes = df_db[(df_db['Dia'] == dia_operacao) & (df_db['Dobrador'] == "")]
-        
-        if pendentes.empty:
-            st.info("Tudo dobrado por aqui!")
-        else:
-            for index, vaga in pendentes.iterrows():
-                with st.container():
-                    c1, c2, c3 = st.columns([1, 3, 2])
-                    c1.subheader(f"D{vaga['Decolagem']}")
-                    c2.write(f"**{vaga['Atleta']}** ({vaga['Equipamento']})")
-                    if c3.button("Assinar", key=f"btn_{index}"):
-                        assinar_no_google(index, meu_nome)
-                        st.rerun()
-                st.divider()
+        # Garante que as colunas Dia e Dobrador existem antes de filtrar
+        if 'Dia' in df_db.columns and 'Dobrador' in df_db.columns:
+            pendentes = df_db[(df_db['Dia'] == dia_operacao) & (df_db['Dobrador'] == "")]
+            
+            if pendentes.empty:
+                st.info("Nada para dobrar agora.")
+            else:
+                for index, vaga in pendentes.iterrows():
+                    with st.container():
+                        c1, c2, c3 = st.columns([1, 3, 2])
+                        c1.subheader(f"D{vaga['Decolagem']}")
+                        c2.write(f"**{vaga['Atleta']}** ({vaga['Equipamento']})")
+                        if c3.button("Assinar", key=f"btn_{index}"):
+                            assinar_no_google(index, meu_nome)
+                            st.rerun()
+                    st.divider()
 
 # 3. DASHBOARD ESCOLA
 elif aba == "Dashboard Escola":
-    st.header("🏫 Fechamento Escola (Student/Tandem)")
+    st.header("🏫 Fechamento Escola")
     if not df_db.empty:
-        # Apenas o que já foi dobrado e é pago pela escola
         df_esc = df_db[(df_db['Dobrador'] != "") & (df_db['Pagador'] == "Escola")]
-        
         if not df_esc.empty:
             c1, c2 = st.columns(2)
-            c1.metric("Total Students", len(df_esc[df_esc['Equipamento'] == "Student"]))
-            c2.metric("Total Tandems", len(df_esc[df_esc['Equipamento'] == "Tandem"]))
-            
+            c1.metric("Students", len(df_esc[df_esc['Equipamento'] == "Student"]))
+            c2.metric("Tandems", len(df_esc[df_esc['Equipamento'] == "Tandem"]))
             resumo = df_esc.groupby('Dobrador').agg(Qtd=('Valor','count'), Total=('Valor','sum')).reset_index()
             st.table(resumo)
-        else:
-            st.info("Nenhum registro da escola ainda.")
 
 # 4. EXTRATO DOBRADOR
 elif aba == "Extrato Dobrador":
-    st.header("👤 Meu Extrato Individual")
-    nome_consulta = st.selectbox("Ver meu resumo:", ["TAMIOZZO", "PORTELLA", "SAUL", "GABRIEL", "VINICIUS"])
-    
+    st.header("👤 Meu Extrato")
+    nome_consulta = st.selectbox("Nome:", ["TAMIOZZO", "PORTELLA", "SAUL", "GABRIEL", "VINICIUS"])
     if not df_db.empty:
         meus_trabalhos = df_db[df_db['Dobrador'] == nome_consulta]
         if not meus_trabalhos.empty:
-            st.metric("Total a Receber (Geral)", f"R$ {meus_trabalhos['Valor'].sum()},00")
+            st.metric("Total", f"R$ {meus_trabalhos['Valor'].sum()},00")
             st.dataframe(meus_trabalhos)
-        else:
-            st.info("Você ainda não assinou nenhuma dobragem.")
 
-# RESET GERAL (SÓ APARECE NO FINAL DO FINANCEIRO)
-if st.sidebar.button("🚨 RESET TOTAL (LIMPAR TUDO)"):
-    # Limpa a planilha a partir da segunda linha
+# RESET
+if st.sidebar.button("🚨 RESET TOTAL"):
     sheet.delete_rows(2, sheet.row_count)
     st.rerun()
