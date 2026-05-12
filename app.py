@@ -2,6 +2,22 @@ import streamlit as st
 import pandas as pd
 import gspread
 from google.oauth2.service_account import Credentials
+from PIL import Image
+
+# --- 1. CONFIGURAÇÃO DA PÁGINA (Sempre a primeira linha de UI) ---
+try:
+    img_logo = Image.open("watermarked_img_12227503519981237449.png")
+    st.set_page_config(page_title="AirOps - Sistema de Paraquedismo", layout="wide", page_icon=img_logo)
+except:
+    st.set_page_config(page_title="AirOps - Sistema de Paraquedismo", layout="wide", page_icon="🪂")
+
+# --- 2. EXIBIÇÃO DO LOGOTIPO NO TOPO ---
+col1, col2, col3 = st.columns([1, 2, 1])
+with col2:
+    try:
+        st.image("watermarked_img_12227503519981237449.png", use_container_width=True)
+    except:
+        st.header("AirOps")
 
 # --- CONEXÃO ---
 scope = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
