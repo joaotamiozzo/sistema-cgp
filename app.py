@@ -6,7 +6,7 @@ from PIL import Image
 
 # --- 1. CONFIGURAÇÃO DA PÁGINA (Sempre a primeira linha de UI) ---
 try:
-    img_logo = Image.open("watermarked_img_12227503519981237449.png")
+    img_logo = Image.open("airops_logo.png")
     st.set_page_config(page_title="AirOps - Sistema de Paraquedismo", layout="wide", page_icon=img_logo)
 except:
     st.set_page_config(page_title="AirOps - Sistema de Paraquedismo", layout="wide", page_icon="🪂")
@@ -15,7 +15,7 @@ except:
 col1, col2, col3 = st.columns([1, 2, 1])
 with col2:
     try:
-        st.image("watermarked_img_12227503519981237449.png", use_container_width=True)
+        st.image("airops_logo.png", use_container_width=True)
     except:
         st.header("AirOps")
 
